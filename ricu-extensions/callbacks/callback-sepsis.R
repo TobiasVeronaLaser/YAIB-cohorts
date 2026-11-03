@@ -94,7 +94,7 @@ susp_inf_alt <- function(..., abx_count_win = hours(24L), abx_min_count = 1L,
 }
 
 
-sep3_alt <- function (..., si_window = c("first", "last", "any"), delta_fun = delta_cummin, 
+sep3_alt <- function (..., si_mode = NULL, si_window = c("first", "last", "any"), delta_fun = delta_cummin, 
           sofa_thresh = 2L, si_lwr = hours(48L), si_upr = hours(24L), 
           keep_components = FALSE, interval = NULL) 
 {

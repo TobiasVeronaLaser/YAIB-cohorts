@@ -77,7 +77,7 @@ stop_obs_at(patients, offset = ricu:::re_time(max_len, time_unit(freq)), by_ref 
 prevalence <- function(concept, hospital_ids, ...) {
   assert_that(is_logical(data_col(concept)))
   var <- data_var(concept)
-  cncpt_per_hosp <- concept[hospital_ids]
+  cncpt_per_hosp <- concept[hospital_ids, on = c(id_vars(concept))]
   cncpt_per_hosp[, (var) := ricu::replace_na(.SD[[var]], FALSE)]
   prevalence <- cncpt_per_hosp[, .(prev = mean(.SD[[var]])), by = hospital_id]
   res <- merge(hospital_ids, prevalence, by = "hospital_id")

@@ -16,6 +16,6 @@ stop_obs_at <- function(x, offset, by_ref = TRUE) {
   idx <- index_var(x)
   
   x <- x[, .(...time = min(.SD[[idx]]) + offset), by = c(ids)]
-  patients[x, end := pmin(end, ...time), on = c(ids)] # Check if on=ids is correct
+  patients[x, end := pmin(end, i....time), on = c(ids)] # Check if on=ids is correct
   invisible(patients)
 }
