@@ -21,6 +21,15 @@ from . import conf
 with open("../weavehr-extensions/config.yml") as stream:  # this path is relative to the calling environment
     ext = yaml.safe_load(stream)
 
+SOURCES = list(ext["sources"])
+"""The WeavEHR datasets (`--src`) the cohorts can be extracted from."""
+
+
+def source_family(src: str) -> str:
+    """Dataset family of `src` (e.g., eicu for eicu-demo-ricu), by which the task scripts choose dataset criteria."""
+    return ext["sources"][src]["family"]
+
+
 HOUR = pd.Timedelta(hours=1)
 AGGREGATE = {"median": pl.Expr.median, "mean": pl.Expr.mean, "sum": pl.Expr.sum, "min": pl.Expr.min, "max": pl.Expr.max}
 
@@ -55,16 +64,29 @@ def _extracted(src: str, events: str, *columns: str) -> pl.LazyFrame:
     return pl.concat([pl.scan_parquet(f).select(*columns) for f in files])
 
 
+def _with_stay_id(src: str, events: str, *columns: str) -> pl.LazyFrame:
+    """Extracted events with the configured ICU stay column as `stay_id` (the subject where a subject is one stay)."""
+    stay = ext["sources"][src]["stay_id"]
+    if stay == "subject_id":
+        return _extracted(src, events, "subject_id", *columns).with_columns(pl.col("subject_id").alias("stay_id"))
+    return _extracted(src, events, "subject_id", stay, *columns).rename({stay: "stay_id"})
+
+
 @cache
 def _stays(src: str) -> pl.DataFrame:
-    """ICU stays: `stay_id`, `subject_id`, admission (`intime`) and discharge (`outtime`) time."""
+    """ICU stays: `stay_id`, `subject_id`, admission (`intime`) and discharge (`outtime`) time.
+
+    The admission is the earliest `icu_admission` event of a stay and the discharge its latest `icu_discharge` event,
+    which is the stay's last observation for HiRID (as in ricu).
+    """
     spec = ext["sources"][src]
 
-    def events(name: str, time: str) -> pl.LazyFrame:
-        return _extracted(src, spec[name], "subject_id", spec["stay_id"], "time").rename(
-            {spec["stay_id"]: "stay_id", "time": time})
+    def events(name: str, time: str, aggregate) -> pl.LazyFrame:
+        return (_with_stay_id(src, spec[name], "time").group_by("subject_id", "stay_id")
+                .agg(aggregate(pl.col("time")).alias(time)))
 
-    stays = events("icu_admission", "intime").join(events("icu_discharge", "outtime"), on=["subject_id", "stay_id"])
+    stays = events("icu_admission", "intime", pl.Expr.min).join(
+        events("icu_discharge", "outtime", pl.Expr.max), on=["subject_id", "stay_id"])
     return stays.collect().sort("stay_id")
 
 
@@ -117,23 +139,61 @@ def _events(src: str, name: str, rows: pl.LazyFrame, interval: pd.Timedelta, fir
     return res.with_columns(pl.lit(True).alias(name)).collect().sort("stay_id", "time")
 
 
+def _death_icu(src: str, interval: pd.Timedelta) -> pl.DataFrame:
+    """ICU death as configured per dataset (`death_icu` in weavehr-extensions/config.yml), during the stay."""
+    spec = ext["sources"][src]["death_icu"]
+    rows = _extracted(src, spec["events"], "subject_id", "time", "text_value")
+    if "text_value" in spec:
+        rows = rows.filter(pl.col("text_value") == spec["text_value"])
+    if "time_from" in spec:
+        last = (_with_stay_id(src, spec["time_from"]["events"], "time", "code")
+                .filter(pl.col("code").str.contains(spec["time_from"]["code"]))
+                .group_by("subject_id", "stay_id").agg(pl.col("time").max()))
+        rows = rows.select("subject_id").unique().join(last, on="subject_id").select("subject_id", "time")
+    return _events(src, "death_icu", rows.select("subject_id", "time"), interval)
+
+
+def _hospital_id(src: str, interval: pd.Timedelta) -> pl.DataFrame:
+    """Hospital of each stay (`hospital_id` in weavehr-extensions/config.yml): an extension column of an event of the
+    stay, or a constant."""
+    spec = ext["sources"][src].get("hospital_id")
+    if spec is None:
+        raise KeyError(f"No hospital_id is configured for {src} in weavehr-extensions/config.yml.")
+    stays = _stays(src).select("stay_id")
+    if not isinstance(spec, str):
+        return stays.with_columns(pl.lit(spec).alias("hospital_id"))
+    events, column = spec.rsplit("/", 1)
+    ids = _with_stay_id(src, events, column).select("stay_id", pl.col(column).alias("hospital_id")).unique()
+    return stays.join(ids.collect(), on="stay_id", how="left").sort("stay_id")
+
+
 OUTCOMES = {
     "los_icu": lambda src, interval: _stays(src).select(
         "stay_id", ((pl.col("outtime") - pl.col("intime")).dt.total_seconds() / 86400).alias("los_icu")),
-    "death_icu": lambda src, interval: _events(src, "death_icu", _extracted(src, "*/MEDS_DEATH", "subject_id", "time"), interval),
+    "death_icu": _death_icu,
+    "hospital_id": _hospital_id,
     "aki": lambda src, interval: _events(src, "aki", _concept(src, "aki").filter(pl.col("numeric_value") >= 1), interval),
     "sep3": lambda src, interval: _events(src, "sep3", _concept(src, "sepsis3"), interval, first=True),
 }
 
 
-def load_concepts(concepts: str | List[str], src: str, interval=None) -> pd.DataFrame:
+def load_concepts(concepts: str | List[str], src: str, interval=None, *, si_mode=None) -> pd.DataFrame:
     """Load one or more concepts (time bins of `interval`, one hour by default), merged on `stay_id` and `time`.
 
-    Outcomes: `los_icu` (days), `death_icu` (a MEDS_DEATH event during the stay), `aki` (WeavEHR's `aki`, KDIGO stage
-    1 or more) and `sep3` (the first onset of WeavEHR's `sepsis3` during the stay).
+    Outcomes: `los_icu` (days), `death_icu` (an ICU death during the stay, as configured per dataset), `hospital_id`
+    (per stay), `aki` (WeavEHR's `aki`, KDIGO stage 1 or more) and `sep3` (the first onset of WeavEHR's `sepsis3`
+    during the stay).
     """
-    interval = _interval(interval)
     names = [concepts] if isinstance(concepts, str) else list(concepts)
+
+    if si_mode is not None:
+        if names != ["sep3"] or source_family(src) not in ("eicu", "hirid") or si_mode != "abx":
+            raise ValueError(
+                f"Unsupported si_mode={si_mode!r} for concepts={names}, src={src}"
+            )
+        # Equivalence to ricu's sep3_alt is NOT established.
+
+    interval = _interval(interval)
     tables = [OUTCOMES[name](src, interval) if name in OUTCOMES else _load(src, name, interval) for name in names]
     res = tables[0]
     for table in tables[1:]:
