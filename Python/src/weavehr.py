@@ -97,11 +97,15 @@ def stay_windows(src: str, interval=None) -> pd.DataFrame:
                               _hours(_bin("outtime", interval), interval).alias("end")).to_pandas()
 
 
-def _concept(src: str, weavehr: str | List[str]) -> pl.LazyFrame:
+def _concept(src: str, weavehr: str | List[str], *, required: bool = False) -> pl.LazyFrame:
     """MEDS rows of a WeavEHR concept, or of several pooled."""
     files = [f for name in ([weavehr] if isinstance(weavehr, str) else weavehr)
              for f in _files(src, f"concept/data/{name}/*/{src}/*.parquet")]
     if not files:
+        if required:
+            raise FileNotFoundError(
+                f"Missing required WeavEHR concept {weavehr} for {src}."
+            )
         print(f"WARNING: no output of WeavEHR concept {weavehr} for {src}.")
         return pl.LazyFrame(schema={"subject_id": pl.Int64, "time": pl.Datetime("us"), "numeric_value": pl.Float64,
                                     "text_value": pl.String})
@@ -172,8 +176,8 @@ OUTCOMES = {
         "stay_id", ((pl.col("outtime") - pl.col("intime")).dt.total_seconds() / 86400).alias("los_icu")),
     "death_icu": _death_icu,
     "hospital_id": _hospital_id,
-    "aki": lambda src, interval: _events(src, "aki", _concept(src, "aki").filter(pl.col("numeric_value") >= 1), interval),
-    "sep3": lambda src, interval: _events(src, "sep3", _concept(src, "sepsis3"), interval, first=True),
+    "aki": lambda src, interval: _events(src, "aki", _concept(src, "aki", required=True).filter(pl.col("numeric_value") >= 1), interval),
+    "sep3": lambda src, interval: _events(src, "sep3", _concept(src, "sepsis3", required=True), interval, first=True),
 }
 
 
