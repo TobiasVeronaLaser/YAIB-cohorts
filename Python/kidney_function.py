@@ -57,7 +57,7 @@ def create_kf_task(args):
         FilterStep('los_icu_hours', lambda x: x < 48)
     ])
 
-    excl7 = SelectionCriterion('Had no creatinine measurement between 24 and 48 hoursn')
+    excl7 = SelectionCriterion('Had no creatinine measurement between 24 and 48 hours')
     excl7.add_step([
         InputStep(kf),
         CustomStep(make_patient_mapper(patients)),
