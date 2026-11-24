@@ -2,14 +2,13 @@ import os
 import argparse
 import pyarrow as pa
 import pyarrow.parquet as pq
-import numpy as np
 
 from src import conf
 from src.cohort import Cohort
 from src.criteria import base_criteria
 from src.steps import (
     InputStep, LoadStep, 
-    TransformStep, CustomStep, DropStep, RenameStep,
+    CustomStep, RenameStep,
     Pipeline
 )
 from src.weavehr import SOURCES, stay_windows
@@ -31,8 +30,8 @@ def create_los_task(args):
     print('   Preload variables')
     load_los = Pipeline('Load and process kidney function')
     load_los.add_step([
-        LoadStep(outc_var, args.src),
-        TransformStep(outc_var, lambda x: np.floor(x * 24))
+        LoadStep('los_icu_hours', args.src),
+        RenameStep('los_icu_hours', outc_var)
     ])
     los = load_los.apply()
 
@@ -65,7 +64,6 @@ def create_los_task(args):
         InputStep(los), 
         CustomStep(make_grid_mapper(patients, match_time=False)),
         CustomStep(calculate_remaining_los),
-        DropStep('time'),
         RenameStep(outc_var, 'label')
     ])
     outc = outc_formatting.apply()

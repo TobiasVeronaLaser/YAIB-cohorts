@@ -22,10 +22,11 @@ def base_criteria(src: str, windows: pd.DataFrame, load_dynamic: Step) -> List[S
         FilterStep('end', lambda x: x < 0)
     ])
 
+    # completed hours in integer arithmetic; `los_icu < 6 / 24` in float days can misjudge a stay of exactly 6h
     excl2 = SelectionCriterion('Length of stay < 6h')
     excl2.add_step([
-        LoadStep('los_icu', src),
-        FilterStep('los_icu', lambda x: x < 6 / 24)
+        LoadStep('los_icu_hours', src),
+        FilterStep('los_icu_hours', lambda x: x < 6)
     ])
 
     excl3 = SelectionCriterion('Less than 4 hours with any measurement')

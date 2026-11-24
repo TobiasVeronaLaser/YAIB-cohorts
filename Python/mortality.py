@@ -56,8 +56,8 @@ def create_mortality_task(args):
 
     excl7 = SelectionCriterion('Length of stay < 30h')
     excl7.add_step([
-        LoadStep('los_icu', src=args.src, cache=True),
-        FilterStep('los_icu', lambda x: x < 30/24)
+        LoadStep('los_icu_hours', src=args.src, cache=True),
+        FilterStep('los_icu_hours', lambda x: x < 30)
     ])
 
     print('   Select cohort\n')

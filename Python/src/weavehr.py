@@ -183,6 +183,9 @@ def _hospital_id(src: str, interval: pd.Timedelta) -> pl.DataFrame:
 OUTCOMES = {
     "los_icu": lambda src, interval: _stays(src).select(
         "stay_id", ((pl.col("outtime") - pl.col("intime")).dt.total_seconds() / 86400).alias("los_icu")),
+    # completed hours in integer arithmetic: floor(los_icu * 24) can lose an hour to rounding (1680 min -> 27 h)
+    "los_icu_hours": lambda src, interval: _stays(src).select(
+        "stay_id", ((pl.col("outtime") - pl.col("intime")).dt.total_seconds() // 3600).alias("los_icu_hours")),
     "death_icu": _death_icu,
     "hospital_id": _hospital_id,
     "aki": lambda src, interval: _events(src, "aki", _concept(src, "aki", required=True).filter(pl.col("numeric_value") >= 1), interval),
@@ -193,7 +196,7 @@ OUTCOMES = {
 def load_concepts(concepts: str | List[str], src: str, interval=None, *, si_mode=None) -> pd.DataFrame:
     """Load one or more concepts (time bins of `interval`, one hour by default), merged on `stay_id` and `time`.
 
-    Outcomes: `los_icu` (days), `death_icu` (an ICU death during the stay, as configured per dataset), `hospital_id`
+    Outcomes: `los_icu` (days), `los_icu_hours` (completed hours), `death_icu` (an ICU death during the stay, as configured per dataset), `hospital_id`
     (per stay), `aki` (WeavEHR's `aki`, KDIGO stage 1 or more) and `sep3` (the first onset of WeavEHR's `sepsis3`
     during the stay).
     """

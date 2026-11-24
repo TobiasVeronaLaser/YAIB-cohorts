@@ -134,3 +134,20 @@ def test_hirid_hospital_id_is_constant(project):
 def test_a_source_without_hospital_id_raises(project):
     with pytest.raises(KeyError, match="hospital_id"):
         load_concepts("hospital_id", "aumc")
+
+
+def write_eicu_stays(write, stays: list[tuple[int, int, float, float]]) -> None:
+    """eICU stays as (subject, stay, admission hour, discharge hour)."""
+    write(*EICU, "patient/ICU_ADMISSION", [{"subject_id": s, "stay_id": i, "time": at(a), "hospital_id": 1}
+                                           for s, i, a, _ in stays], {**EICU_STAY, "hospital_id": pl.Int64})
+    write(*EICU, "patient/ICU_DISCHARGE", [{"subject_id": s, "stay_id": i, "time": at(d), "text_value": "Alive"}
+                                           for s, i, _, d in stays], EICU_STAY)
+
+
+def test_los_icu_hours_are_completed_hours_without_rounding_error(project):
+    # whole-hour stays (eICU offsets are minutes): floor(los_icu * 24) lost an hour for e.g. 28h, 245h and 97h
+    hours = list(range(1, 400))
+    stays = [(i, i, 0, h) for i, h in enumerate(hours, start=1)] + [(999, 999, 0, 5 + 59 / 60)]
+    write_eicu_stays(project, stays)
+    res = load_concepts("los_icu_hours", EICU[0])
+    assert res["los_icu_hours"].tolist() == hours + [5]

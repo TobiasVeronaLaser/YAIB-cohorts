@@ -53,8 +53,8 @@ def create_kf_task(args):
     # Task-specific exclusion criteria
     excl6 = SelectionCriterion('Length of stay < 48h')
     excl6.add_step([
-        LoadStep('los_icu', src=args.src, cache=True),
-        FilterStep('los_icu', lambda x: x < 48/24)
+        LoadStep('los_icu_hours', src=args.src, cache=True),
+        FilterStep('los_icu_hours', lambda x: x < 48)
     ])
 
     excl7 = SelectionCriterion('Had no creatinine measurement between 24 and 48 hoursn')
