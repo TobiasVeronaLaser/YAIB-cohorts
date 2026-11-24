@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 from weavehr import ConceptStep, ExtractionStep, WeavEHRProject
 from weavehr.logging import configure_logging
-from weavehr.utils.loader import auto_load_configs
+from weavehr import load_configs
 
 from src import conf
 
@@ -22,7 +22,7 @@ with open('../weavehr-extensions/config.yml') as stream:  # this path is relativ
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--src', required=True, choices=SOURCES,
-                        help='name of the WeavEHR dataset, e.g., mimic-iv-demo or its ricu-compatible mimic-iv-demo-ricu')
+                        help='name of the WeavEHR dataset, e.g., mimic-iv or mimic-iv-demo')
     parser.add_argument('--version', required=True, help='version of the dataset, e.g., 2.2')
     parser.add_argument('--data-path', required=True, help='directory with the raw data files of the dataset')
     parser.add_argument('--overwrite', action='store_true', help='rebuild steps that have already been run')
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     }
 
     configure_logging(level="INFO")
-    auto_load_configs()
+    load_configs(dataset_filter=[args.src])
     project_path = Path(conf['weavehr_project_path'].format(src=args.src))
     with tempfile.TemporaryDirectory() as config_dir, WeavEHRProject(project_path) as project:
         for name, step in steps.items():

@@ -22,14 +22,12 @@ conda activate yaib-cohorts
 
 The cohorts are read from a WeavEHR project per dataset, the counterpart of importing a dataset into `ricu`. Configured datasets (`--src`, WeavEHR version): MIMIC-IV (`mimic-iv`, 2.2 or 3.1) and its openly available [demo](https://physionet.org/content/mimic-iv-demo/) (`mimic-iv-demo`, 2.2), eICU-CRD (`eicu-crd`, 2.0) and its [demo](https://physionet.org/content/eicu-crd-demo/) (`eicu-demo`, 2.0), HiRID (`hirid`, 1.1.1) and AmsterdamUMCdb (`aumc`, 1.5.0, the OMOP export).
 
-To compare the cohorts with those extracted with `ricu`, build the ricu-compatible datasets `mimic-iv-ricu` (2.2 or 3.1), `mimic-iv-demo-ricu` (2.2), `eicu-crd-ricu` (2.0) and `eicu-demo-ricu` (2.0) from the same raw data. They are WeavEHR datasets that extend the dataset with ricu 0.6.3's mappings (with YAIB's `ricu-extensions`) where WeavEHR intentionally differs from ricu, e.g., magnesium in eICU or item 226253 in MIMIC-IV's oxygen saturation; their READMEs in WeavEHR (`configs/datasets/*-ricu/README.md`) list them. Each dataset gets its own project directory, so a `*-ricu` project does not replace the dataset's project.
 
 `weavehr_project_path` in [config.yaml](../config.yaml) is where the WeavEHR project of each dataset (`{src}`) is kept. It contains patient-level data, so keep it outside of this repository. Build the project from the raw data files of the dataset:
 
 ```bash
 python weavehr_build.py --src mimic-iv-demo --version 2.2 --data-path /path/to/physionet.org/files/mimic-iv-demo/2.2
 python weavehr_build.py --src eicu-demo --version 2.0 --data-path /path/to/physionet.org/files/eicu-crd-demo/2.0.1
-python weavehr_build.py --src eicu-demo-ricu --version 2.0 --data-path /path/to/physionet.org/files/eicu-crd-demo/2.0.1
 ```
 
 The dataset and concept configs are WeavEHR's own; this repository adds none (see [Clinical concepts](#clinical-concepts)).

@@ -26,7 +26,7 @@ SOURCES = list(ext["sources"])
 
 
 def source_family(src: str) -> str:
-    """Dataset family of `src` (e.g., eicu for eicu-demo-ricu), by which the task scripts choose dataset criteria."""
+    """Dataset family of `src` (e.g., eicu for eicu-demo), by which the task scripts choose dataset criteria."""
     return ext["sources"][src]["family"]
 
 
@@ -121,10 +121,19 @@ def _in_stays(rows: pl.LazyFrame, src: str, interval: pd.Timedelta) -> pl.LazyFr
             .with_columns(_bin("time", interval).alias("time")))
 
 
+def _concept_cfg(src: str, name: str) -> dict:
+    """Resolve a YAIB concept configuration for a dataset family."""
+    cfg = ext["concepts"][name]
+    override = cfg.get("dataset_overrides", {}).get(
+        source_family(src), {}
+    )
+    return {**cfg, **override}
+
+
 def _load(src: str, name: str, interval: pd.Timedelta) -> pl.DataFrame:
     """Concept `name` of weavehr-extensions/config.yml: the last value up to the end of each stay (static), or the
     values during each stay aggregated per time bin."""
-    cfg = ext["concepts"][name]
+    cfg = _concept_cfg(src, name)
     rows = _concept(src, cfg["weavehr"]).with_columns(
         pl.col("text_value" if cfg.get("text") else "numeric_value").alias(name)).drop_nulls(name)
     if cfg.get("static"):

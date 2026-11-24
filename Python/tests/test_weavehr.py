@@ -38,13 +38,13 @@ def project(tmp_path, monkeypatch):
     weavehr._stays.cache_clear()
 
 
-def test_every_source_is_configured_and_ricu_variants_follow_their_dataset():
+def test_every_source_is_configured():
     for src in SOURCES:
         spec = weavehr.ext["sources"][src]
         assert {"family", "stay_id", "icu_admission", "icu_discharge", "death_icu"} <= set(spec), src
         assert spec["family"] in {"eicu", "mimic-iv", "hirid", "aumc"}, src
-    for variant, dataset in [("eicu-crd-ricu", "eicu-crd"), ("eicu-demo-ricu", "eicu-crd"),
-                             ("mimic-iv-ricu", "mimic-iv"), ("mimic-iv-demo-ricu", "mimic-iv")]:
+    for variant, dataset in [("eicu-demo", "eicu-crd"),
+                             ("mimic-iv-demo", "mimic-iv")]:
         assert weavehr.ext["sources"][variant] == weavehr.ext["sources"][dataset]
         assert source_family(variant) == source_family(dataset)
 
@@ -55,7 +55,7 @@ def test_every_source_has_a_weavehr_dataset_config():
     assert [src for src in SOURCES if not (datasets / src).is_dir()] == []
 
 
-EICU = ("eicu-demo-ricu", "2.0")
+EICU = ("eicu-demo", "2.0")
 EICU_STAY = {"stay_id": pl.Int64}
 
 

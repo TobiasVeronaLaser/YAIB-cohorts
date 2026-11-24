@@ -41,7 +41,13 @@ concepts:
   mg: {weavehr: magnesium}
   na: {weavehr: sodium}
   neut: {weavehr: neutrophils}
-  o2sat: {weavehr: [oxygen_saturation, arterial_oxygen_saturation]}
+  o2sat:
+    weavehr: oxygen_saturation
+    dataset_overrides:
+      mimic-iv:
+        weavehr:
+          - oxygen_saturation
+          - arterial_oxygen_saturation
   pco2: {weavehr: CO2_partial_pressure}
   ph: {weavehr: pH_of_blood}
   phos: {weavehr: phosphate}
@@ -59,11 +65,9 @@ concepts:
   height: {weavehr: patient_height, static: true}
   weight: {weavehr: patient_weight, static: true}
 
-# sources: the WeavEHR datasets (--src) a project can be built for, with WeavEHR's own configs. The *-ricu
-#   datasets extend a dataset with ricu 0.6.3's mappings where WeavEHR intentionally differs from ricu (see their
-#   READMEs in WeavEHR), for comparisons with the cohorts extracted with ricu. Per dataset:
+# sources: Native WeavEHR datasets supported by the YAIB backend. Per dataset:
 #   family: dataset family (eicu, mimic-iv, hirid, aumc); the task scripts choose dataset-specific criteria by it,
-#     so demos and *-ricu datasets follow their dataset.
+#     so demo datasets follow their dataset.
 #   stay_id: the column identifying ICU stays in the extraction output, or subject_id where a subject is one stay.
 #   icu_admission, icu_discharge: events (<table>/<event>) whose earliest and latest time per stay are the ICU
 #     admission and discharge.
@@ -83,8 +87,6 @@ sources:
     death_icu: {events: "*/MEDS_DEATH"}
     hospital_id: 1  # as ricu-extensions
   mimic-iv-demo: *mimic-iv
-  mimic-iv-ricu: *mimic-iv
-  mimic-iv-demo-ricu: *mimic-iv
   eicu-crd: &eicu-crd
     family: eicu
     stay_id: stay_id
@@ -95,8 +97,6 @@ sources:
     # as ricu-extensions: patient.hospitalid
     hospital_id: patient/ICU_ADMISSION/hospital_id
   eicu-demo: *eicu-crd
-  eicu-crd-ricu: *eicu-crd
-  eicu-demo-ricu: *eicu-crd
   hirid:
     family: hirid
     stay_id: subject_id  # patientid, ricu's ICU stay ID
