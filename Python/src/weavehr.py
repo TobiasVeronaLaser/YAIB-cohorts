@@ -77,7 +77,8 @@ def _stays(src: str) -> pl.DataFrame:
     """ICU stays: `stay_id`, `subject_id`, admission (`intime`) and discharge (`outtime`) time.
 
     The admission is the earliest `icu_admission` event of a stay and the discharge its latest `icu_discharge` event,
-    which is the stay's last observation for HiRID (as in ricu).
+    which is the stay's last observation for HiRID (as in ricu). `handover` marks a stay that starts at the moment
+    another stay of the subject ends.
     """
     spec = ext["sources"][src]
 
@@ -86,8 +87,12 @@ def _stays(src: str) -> pl.DataFrame:
                 .agg(aggregate(pl.col("time")).alias(time)))
 
     stays = events("icu_admission", "intime", pl.Expr.min).join(
-        events("icu_discharge", "outtime", pl.Expr.max), on=["subject_id", "stay_id"])
-    return stays.collect().sort("stay_id")
+        events("icu_discharge", "outtime", pl.Expr.max), on=["subject_id", "stay_id"]).collect()
+    ends = stays.select("subject_id", pl.col("stay_id").alias("other"), pl.col("outtime").alias("intime"))
+    handover = (stays.join(ends, on=["subject_id", "intime"]).filter(pl.col("other") != pl.col("stay_id"))
+                .select("stay_id").unique().with_columns(pl.lit(True).alias("handover")))
+    stays = stays.join(handover, on="stay_id", how="left").with_columns(pl.col("handover").fill_null(False))
+    return stays.sort("stay_id")
 
 
 def stay_windows(src: str, interval=None) -> pd.DataFrame:
@@ -115,9 +120,14 @@ def _concept(src: str, weavehr: str | List[str], *, required: bool = False) -> p
 
 
 def _in_stays(rows: pl.LazyFrame, src: str, interval: pd.Timedelta) -> pl.LazyFrame:
-    """Rows recorded during an ICU stay of their patient, with `stay_id` and their time bin as `time`."""
+    """Rows recorded during an ICU stay of their patient, with `stay_id` and their time bin as `time`.
+
+    A row at the moment one stay ends and the next begins belongs to the stay that ends (an eICU ICU death is dated
+    at the ICU discharge).
+    """
+    handover_row = pl.col("handover") & (pl.col("time") == pl.col("intime"))
     return (rows.join(_stays(src).lazy(), on="subject_id")
-            .filter(pl.col("time").is_between("intime", "outtime"))
+            .filter(pl.col("time").is_between("intime", "outtime") & ~handover_row)
             .with_columns(_bin("time", interval).alias("time")))
 
 

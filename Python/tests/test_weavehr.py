@@ -162,3 +162,20 @@ def test_a_stay_without_any_measurement_has_fewer_than_four_hours():
     dyn = pd.DataFrame({"stay_id": [1] * 5, "time": range(5), "hr": [80.0] * 5})
     excl3 = base_criteria(EICU[0], windows, InputStep(dyn))[2]
     assert excl3.apply()["stay_id"].tolist() == [2]
+
+
+def write_concept(src: str, version: str, name: str, rows: list[dict]) -> None:
+    """Write WeavEHR concept output (<project>/datasets/concept/data/<name>/1.0.0/<src>/<version>.parquet)."""
+    path = Path(weavehr.conf["weavehr_project_path"].format(src=src), "datasets/concept/data", name, "1.0.0", src,
+                f"{version}.parquet")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame([{col: row.get(col) for col in MEDS} for row in rows], schema=MEDS).write_parquet(path)
+
+
+def test_a_row_at_a_handover_belongs_to_the_stay_that_ends(project):
+    # subject 1 moves from stay 10 to stay 11 at 24h; a heart rate charted at that moment is stay 10's last hour
+    write_eicu_stays(project, [(1, 10, 0, 24), (1, 11, 24, 36)])
+    write_concept(*EICU, "heart_rate", [{"subject_id": 1, "time": at(24), "numeric_value": 80},
+                                        {"subject_id": 1, "time": at(25), "numeric_value": 90}])
+    assert load_concepts("hr", EICU[0]).to_dict("records") == [
+        {"stay_id": 10, "time": 24, "hr": 80.0}, {"stay_id": 11, "time": 1, "hr": 90.0}]
