@@ -27,6 +27,7 @@ def project(tmp_path, monkeypatch):
     """Point the loader at a temporary project per source; returns a writer of extracted events."""
     monkeypatch.setitem(weavehr.conf, "weavehr_project_path", str(tmp_path / "{src}"))
     weavehr._stays.cache_clear()
+    weavehr._admissions.cache_clear()
 
     def write(src: str, version: str, events: str, rows: list[dict], extra: dict | None = None) -> None:
         path = tmp_path / src / "datasets/extraction/data" / src / version / f"{events}.parquet"
@@ -36,6 +37,7 @@ def project(tmp_path, monkeypatch):
 
     yield write
     weavehr._stays.cache_clear()
+    weavehr._admissions.cache_clear()
 
 
 def test_every_source_is_configured():
@@ -179,3 +181,21 @@ def test_a_row_at_a_handover_belongs_to_the_stay_that_ends(project):
                                         {"subject_id": 1, "time": at(25), "numeric_value": 90}])
     assert load_concepts("hr", EICU[0]).to_dict("records") == [
         {"stay_id": 10, "time": 24, "hr": 80.0}, {"stay_id": 11, "time": 1, "hr": 90.0}]
+
+
+def test_pre_icu_rows_start_at_the_hospital_admission(project):
+    write_eicu_stays(project, [(1, 10, 0, 24)])
+    project(*EICU, "patient/HOSPITAL_ADMISSION", [{"subject_id": 1, "stay_id": 10, "time": at(-10)}], EICU_STAY)
+    write_concept(*EICU, "creatinine", [{"subject_id": 1, "time": at(h), "numeric_value": v}
+                                        for h, v in [(-20, 9.0), (-5, 1.0), (2, 2.0)]])
+    assert load_concepts("crea", EICU[0], pre_icu=True).to_dict("records") == [
+        {"stay_id": 10, "time": -5, "crea": 1.0}, {"stay_id": 10, "time": 2, "crea": 2.0}]
+    assert load_concepts("crea", EICU[0]).to_dict("records") == [{"stay_id": 10, "time": 2, "crea": 2.0}]
+
+
+def test_a_source_without_hospital_admission_has_no_pre_icu_rows(project):
+    write_hirid(project)
+    write_concept(*HIRID, "creatinine", [{"subject_id": 100, "time": at(-5), "numeric_value": 1.0},
+                                         {"subject_id": 100, "time": at(2), "numeric_value": 2.0}])
+    res = load_concepts("crea", HIRID[0], pre_icu=True)
+    assert res.to_dict("records") == [{"stay_id": 100, "time": 2, "crea": 2.0}]

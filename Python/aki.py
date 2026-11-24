@@ -84,7 +84,7 @@ def create_aki_task(args):
 
     excl8 = SelectionCriterion('Baseline creatinine > 4')
     excl8.add_step([
-        LoadStep('crea', src=args.src),
+        LoadStep('crea', src=args.src, pre_icu=True),  # pre-ICU values of the admission, as R
         CustomStep(cummin_crea),
         CustomStep(get_baseline_candidates),
         AggStep(['stay_id'], 'last'),

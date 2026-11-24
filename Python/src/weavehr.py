@@ -95,6 +95,21 @@ def _stays(src: str) -> pl.DataFrame:
     return stays.sort("stay_id")
 
 
+@cache
+def _admissions(src: str) -> pl.DataFrame:
+    """Start (`admittime`) of the hospital admission of each stay: the latest `hospital_admission` event at or before
+    the ICU admission; the ICU admission itself where the source configures no `hospital_admission`."""
+    stays = _stays(src).select("subject_id", "stay_id", "intime")
+    spec = ext["sources"][src]
+    if "hospital_admission" not in spec:
+        return stays.select("stay_id", pl.col("intime").alias("admittime"))
+    admissions = _extracted(src, spec["hospital_admission"], "subject_id", "time").collect()
+    return (stays.sort("intime")
+            .join_asof(admissions.rename({"time": "admittime"}).sort("admittime"), left_on="intime",
+                       right_on="admittime", by="subject_id", strategy="backward", check_sortedness=False)
+            .select("stay_id", pl.coalesce("admittime", "intime").alias("admittime")))
+
+
 def stay_windows(src: str, interval=None) -> pd.DataFrame:
     """Start of the first (`start`) and last (`end`) time bin of all ICU stays, in hours since ICU admission."""
     interval = _interval(interval)
@@ -119,16 +134,21 @@ def _concept(src: str, weavehr: str | List[str], *, required: bool = False) -> p
     return pl.concat([pl.scan_parquet(f).select("subject_id", "time", value, "text_value") for f in files])
 
 
-def _in_stays(rows: pl.LazyFrame, src: str, interval: pd.Timedelta) -> pl.LazyFrame:
+def _in_stays(rows: pl.LazyFrame, src: str, interval: pd.Timedelta, pre_icu: bool = False) -> pl.LazyFrame:
     """Rows recorded during an ICU stay of their patient, with `stay_id` and their time bin as `time`.
 
     A row at the moment one stay ends and the next begins belongs to the stay that ends (an eICU ICU death is dated
-    at the ICU discharge).
+    at the ICU discharge). With `pre_icu`, rows from the start of the stay's hospital admission on are kept as well
+    (negative bins), as ricu attaches them to a stay; a source without `hospital_admission` has none.
     """
-    handover_row = pl.col("handover") & (pl.col("time") == pl.col("intime"))
-    return (rows.join(_stays(src).lazy(), on="subject_id")
-            .filter(pl.col("time").is_between("intime", "outtime") & ~handover_row)
-            .with_columns(_bin("time", interval).alias("time")))
+    stays = _stays(src).lazy()
+    if pre_icu:
+        stays = stays.join(_admissions(src).lazy(), on="stay_id")
+        keep = pl.col("time").is_between("admittime", "outtime")
+    else:
+        handover_row = pl.col("handover") & (pl.col("time") == pl.col("intime"))
+        keep = pl.col("time").is_between("intime", "outtime") & ~handover_row
+    return rows.join(stays, on="subject_id").filter(keep).with_columns(_bin("time", interval).alias("time"))
 
 
 def _concept_cfg(src: str, name: str) -> dict:
@@ -140,9 +160,10 @@ def _concept_cfg(src: str, name: str) -> dict:
     return {**cfg, **override}
 
 
-def _load(src: str, name: str, interval: pd.Timedelta) -> pl.DataFrame:
+def _load(src: str, name: str, interval: pd.Timedelta, pre_icu: bool = False) -> pl.DataFrame:
     """Concept `name` of weavehr-extensions/config.yml: the last value up to the end of each stay (static), or the
-    values during each stay aggregated per time bin."""
+    values during each stay (with `pre_icu`, also those of the hospital admission before it) aggregated per time
+    bin."""
     cfg = _concept_cfg(src, name)
     rows = _concept(src, cfg["weavehr"]).with_columns(
         pl.col("text_value" if cfg.get("text") else "numeric_value").alias(name)).drop_nulls(name)
@@ -151,7 +172,7 @@ def _load(src: str, name: str, interval: pd.Timedelta) -> pl.DataFrame:
                 .group_by("stay_id").agg(pl.col(name).sort_by("time", maintain_order=True).last())
                 .collect().sort("stay_id"))
     aggregate = AGGREGATE[cfg.get("aggregate", "median")]
-    return (_in_stays(rows, src, interval).group_by("stay_id", "time").agg(aggregate(pl.col(name)))
+    return (_in_stays(rows, src, interval, pre_icu).group_by("stay_id", "time").agg(aggregate(pl.col(name)))
             .collect().sort("stay_id", "time"))
 
 
@@ -203,12 +224,14 @@ OUTCOMES = {
 }
 
 
-def load_concepts(concepts: str | List[str], src: str, interval=None, *, si_mode=None) -> pd.DataFrame:
+def load_concepts(concepts: str | List[str], src: str, interval=None, *, si_mode=None,
+                  pre_icu: bool = False) -> pd.DataFrame:
     """Load one or more concepts (time bins of `interval`, one hour by default), merged on `stay_id` and `time`.
 
-    Outcomes: `los_icu` (days), `los_icu_hours` (completed hours), `death_icu` (an ICU death during the stay, as configured per dataset), `hospital_id`
-    (per stay), `aki` (WeavEHR's `aki`, KDIGO stage 1 or more) and `sep3` (the first onset of WeavEHR's `sepsis3`
-    during the stay).
+    Time series cover the ICU stay; `pre_icu` adds the rows of the stay's hospital admission before it (negative
+    bins). Outcomes: `los_icu` (days), `los_icu_hours` (completed hours), `death_icu` (an ICU death during the stay,
+    as configured per dataset), `hospital_id` (per stay), `aki` (WeavEHR's `aki`, KDIGO stage 1 or more) and `sep3`
+    (the first onset of WeavEHR's `sepsis3` during the stay).
     """
     names = [concepts] if isinstance(concepts, str) else list(concepts)
 
@@ -220,7 +243,8 @@ def load_concepts(concepts: str | List[str], src: str, interval=None, *, si_mode
         # Equivalence to ricu's sep3_alt is NOT established.
 
     interval = _interval(interval)
-    tables = [OUTCOMES[name](src, interval) if name in OUTCOMES else _load(src, name, interval) for name in names]
+    tables = [OUTCOMES[name](src, interval) if name in OUTCOMES else _load(src, name, interval, pre_icu)
+              for name in names]
     res = tables[0]
     for table in tables[1:]:
         res = res.join(table, on=[c for c in ("stay_id", "time") if c in res.columns and c in table.columns],

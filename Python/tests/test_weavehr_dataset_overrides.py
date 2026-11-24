@@ -118,7 +118,7 @@ def test_o2sat_hourly_aggregation(
     monkeypatch.setattr(
         weavehr,
         "_in_stays",
-        lambda rows, dataset, interval: rows,
+        lambda rows, dataset, interval, pre_icu=False: rows,
     )
 
     result = weavehr._load(

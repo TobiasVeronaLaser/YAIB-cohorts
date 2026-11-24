@@ -71,6 +71,9 @@ concepts:
 #   stay_id: the column identifying ICU stays in the extraction output, or subject_id where a subject is one stay.
 #   icu_admission, icu_discharge: events (<table>/<event>) whose earliest and latest time per stay are the ICU
 #     admission and discharge.
+#   hospital_admission (optional): events whose latest time at or before an ICU admission starts the hospital
+#     admission of that stay; rows from then on are attached to the stay where a task asks for pre-ICU values
+#     (the AKI baseline, as ricu). Without it, a stay has no pre-ICU values.
 #   death_icu: events marking an ICU death, only those whose text_value is `text_value` if given; timed at the
 #     event, or at the stay's last event matching `time_from` (events, code regex).
 #   hospital_id: the hospital of each stay, as <table>/<event>/<extension column>, or a constant. Only the eICU
@@ -83,6 +86,7 @@ sources:
     stay_id: stay_id
     icu_admission: icustay/icu_admission
     icu_discharge: icustay/icu_discharge
+    hospital_admission: admissions/HOSPITAL_ADMISSION
     # a death recorded within the stay (ricu-extensions: an in-hospital death whose last ward was an ICU)
     death_icu: {events: "*/MEDS_DEATH"}
     hospital_id: 1  # as ricu-extensions
@@ -92,6 +96,7 @@ sources:
     stay_id: stay_id
     icu_admission: patient/ICU_ADMISSION
     icu_discharge: patient/ICU_DISCHARGE
+    hospital_admission: patient/HOSPITAL_ADMISSION
     # as ricu-extensions: unitdischargestatus "Expired", at the ICU discharge
     death_icu: {events: patient/ICU_DISCHARGE, text_value: Expired}
     # as ricu-extensions: patient.hospitalid
