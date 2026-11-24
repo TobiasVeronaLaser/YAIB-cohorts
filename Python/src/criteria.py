@@ -4,7 +4,7 @@ from typing import List
 import pandas as pd
 
 from .cohort import SelectionCriterion
-from .cohort_utils import longest_rle, make_grid_mapper, n_obs_per_row
+from .cohort_utils import longest_rle, make_grid_mapper, make_patient_mapper, n_obs_per_row
 from .steps import AggStep, CustomStep, FilterStep, InputStep, LoadStep, Step, TransformStep
 
 
@@ -29,9 +29,11 @@ def base_criteria(src: str, windows: pd.DataFrame, load_dynamic: Step) -> List[S
         FilterStep('los_icu_hours', lambda x: x < 6)
     ])
 
+    # map onto all stays first: a stay without any measurement has no row to count and would otherwise pass
     excl3 = SelectionCriterion('Less than 4 hours with any measurement')
     excl3.add_step([
         load_dynamic,
+        CustomStep(make_patient_mapper(windows)),
         AggStep('stay_id', 'count'),
         FilterStep('time', lambda x: x < 4)
     ])

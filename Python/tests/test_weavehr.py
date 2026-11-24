@@ -151,3 +151,14 @@ def test_los_icu_hours_are_completed_hours_without_rounding_error(project):
     write_eicu_stays(project, stays)
     res = load_concepts("los_icu_hours", EICU[0])
     assert res["los_icu_hours"].tolist() == hours + [5]
+
+
+def test_a_stay_without_any_measurement_has_fewer_than_four_hours():
+    import pandas as pd
+    from src.criteria import base_criteria
+    from src.steps import InputStep
+
+    windows = pd.DataFrame({"stay_id": [1, 2], "start": [0, 0], "end": [20, 20]})
+    dyn = pd.DataFrame({"stay_id": [1] * 5, "time": range(5), "hr": [80.0] * 5})
+    excl3 = base_criteria(EICU[0], windows, InputStep(dyn))[2]
+    assert excl3.apply()["stay_id"].tolist() == [2]
