@@ -105,9 +105,9 @@ HIRID = ("hirid", "1.1.1")
 def write_hirid(write):
     write(*HIRID, "general/ICU_ADMISSION",
           [{"subject_id": 100, "time": at(0), "code": "admission"}, {"subject_id": 101, "time": at(0), "code": "admission"}])
-    write(*HIRID, "general/MORTALITY",
-          [{"subject_id": 100, "time": at(0), "code": "mortality", "text_value": "dead"},
-           {"subject_id": 101, "time": at(0), "code": "mortality", "text_value": "alive"}])
+    # Native WeavEHR emits MEDS_DEATH at the last relevant monitoring event.
+    write(*HIRID, "general/MEDS_DEATH",
+          [{"subject_id": 100, "time": at(3), "code": "MEDS_DEATH"}])
     write(*HIRID, "observations/OBSERVATION",
           [{"subject_id": 100, "time": at(1), "code": "OBSERVATION//200//Heart rate//b/min", "numeric_value": 80},
            {"subject_id": 100, "time": at(3), "code": "OBSERVATION//110//ABPm//mmHg", "numeric_value": 60},

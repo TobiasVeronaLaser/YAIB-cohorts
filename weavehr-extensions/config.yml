@@ -108,12 +108,9 @@ sources:
     icu_admission: general/ICU_ADMISSION
     # as ricu (id_win_helper.hirid_env): a stay ends at its last observation
     icu_discharge: observations/OBSERVATION
-    # as ricu-extensions (hirid_death_icu): discharge_status "dead", at the last observation of heart rate (200) or
-    # invasive mean arterial pressure (110)
-    death_icu:
-      events: general/MORTALITY
-      text_value: dead
-      time_from: {events: observations/OBSERVATION, code: "^(?:OBSERVATION//)?(?:110|200)(?:$|//)"}
+    # Native WeavEHR emits MEDS_DEATH for deceased patients at the last
+    # heart-rate (200) or invasive mean arterial pressure (110) observation.
+    death_icu: {events: general/MEDS_DEATH}
     hospital_id: 1  # as ricu-extensions
   aumc:
     family: aumc
